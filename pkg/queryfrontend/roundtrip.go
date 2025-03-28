@@ -87,6 +87,7 @@ func NewTripperware(config Config, reg prometheus.Registerer, logger log.Logger)
 			queryRangeTripperware(next),
 			labelsTripperware(next),
 			queryInstantTripperware(next),
+			config.QueryRejectionConfig,
 			reg,
 		)
 		return tenancy.InternalTenancyConversionTripper(config.TenantHeader, config.TenantCertField, tripper)
@@ -95,19 +96,25 @@ func NewTripperware(config Config, reg prometheus.Registerer, logger log.Logger)
 
 type roundTripper struct {
 	next, queryInstant, queryRange, labels http.RoundTripper
-
-	queriesCount *prometheus.CounterVec
+	config                                 QueryRejection
+	queriesCount                           *prometheus.CounterVec
+	queriesRejectedCount                   *prometheus.CounterVec
 }
 
-func newRoundTripper(next, queryRange, metadata, queryInstant http.RoundTripper, reg prometheus.Registerer) roundTripper {
+func newRoundTripper(next, queryRange, metadata, queryInstant http.RoundTripper, q QueryRejection, reg prometheus.Registerer) roundTripper {
 	r := roundTripper{
 		next:         next,
 		queryInstant: queryInstant,
 		queryRange:   queryRange,
 		labels:       metadata,
+		config:       q,
 		queriesCount: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
 			Name: "thanos_query_frontend_queries_total",
 			Help: "Total queries passing through query frontend",
+		}, []string{"op"}),
+		queriesRejectedCount: promauto.With(reg).NewCounterVec(prometheus.CounterOpts{
+			Name: "thanos_query_frontend_queries_rejected_total",
+			Help: "Total rejected queries.",
 		}, []string{"op"}),
 	}
 
@@ -120,6 +127,9 @@ func newRoundTripper(next, queryRange, metadata, queryInstant http.RoundTripper,
 }
 
 func (r roundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if err := checkForQueryRejection(req, r.config, r.queriesRejectedCount); err != nil {
+		return nil, err
+	}
 	switch op := getOperation(req); op {
 	case instantQueryOp:
 		r.queriesCount.WithLabelValues(instantQueryOp).Inc()

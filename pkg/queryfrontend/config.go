@@ -221,8 +221,9 @@ type QueryRangeConfig struct {
 	// when parsing thanos query request.
 	PartialResponseStrategy bool
 
-	ResultsCacheConfig *queryrange.ResultsCacheConfig
-	CachePathOrContent extflag.PathOrContent
+	ResultsCacheConfig          *queryrange.ResultsCacheConfig
+	CachePathOrContent          extflag.PathOrContent
+	QueryRejectionPathOrContent extflag.PathOrContent
 
 	AlignRangeWithStep     bool
 	RequestDownsampled     bool

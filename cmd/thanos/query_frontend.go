@@ -111,6 +111,8 @@ func registerQueryFrontend(app *extkingpin.App) {
 
 	cfg.QueryRangeConfig.CachePathOrContent = *extflag.RegisterPathOrContent(cmd, "query-range.response-cache-config", "YAML file that contains response cache configuration.", extflag.WithEnvSubstitution())
 
+	cfg.QueryRangeConfig.QueryRejectionPathOrContent = *extflag.RegisterPathOrContent(cmd, "query-range.query-rejection-config", "YAML file that contains query rejection configuyration", extflag.WithEnvSubstitution())
+
 	// Labels tripperware flags.
 	cmd.Flag("labels.split-interval", "Split labels requests by an interval and execute in parallel, it should be greater than 0 when labels.response-cache-config is configured.").
 		Default("24h").DurationVar(&cfg.LabelsConfig.SplitQueriesByInterval)
@@ -266,6 +268,22 @@ func runQueryFrontend(
 	}
 	if len(queryRangeCacheConfContentYaml) > 0 {
 		cacheConfig, err := queryfrontend.NewCacheConfig(logger, queryRangeCacheConfContentYaml)
+		if err != nil {
+			return errors.Wrap(err, "initializing the query range cache config")
+		}
+		cfg.QueryRangeConfig.ResultsCacheConfig = &queryrange.ResultsCacheConfig{
+			Compression:                cfg.CacheCompression,
+			CacheConfig:                *cacheConfig,
+			CacheQueryableSamplesStats: cfg.CortexHandlerConfig.QueryStatsEnabled,
+		}
+	}
+
+	queryRejectionConfContentYaml, err := cfg.QueryRangeConfig.QueryRejectionPathOrContent.Content()
+	if err != nil {
+		return err
+	}
+	if len(queryRejectionConfContentYaml) > 0 {
+		queryRejection, err := queryfrontend.NewCacheConfig(logger, queryRangeCacheConfContentYaml)
 		if err != nil {
 			return errors.Wrap(err, "initializing the query range cache config")
 		}
